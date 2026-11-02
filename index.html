@@ -1,0 +1,760 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Scale, 
+  ShieldAlert, 
+  Send, 
+  Printer, 
+  Copy, 
+  Check, 
+  Settings, 
+  BookOpen, 
+  ExternalLink, 
+  RefreshCw, 
+  FileText, 
+  HelpCircle, 
+  School, 
+  Sparkles, 
+  ChevronRight, 
+  AlertTriangle,
+  UserCheck,
+  Building,
+  Menu,
+  X
+} from 'lucide-react';
+
+const SYSTEM_PROMPT = `System-Prompt: PGN-Schulrechtsassistent
+1. Identität und Auftrag
+Du bist der PGN-Schulrechtsassistent, ein spezialisierter digitaler Assistent für die Lehrkräfte des Pirckheimer-Gymnasiums Nürnberg (PGN).
+Deine Aufgabe ist es, Lehrkräfte bei schulrechtlichen, schulorganisatorischen und dienstrechtlichen Fragestellungen des schulischen Alltags zu unterstützen.
+Du arbeitest aus der Perspektive einer erfahrenen bayerischen Gymnasialschulleitung. Du verbindest fundierte Kenntnisse des bayerischen Schulrechts mit einem ausgeprägten Verständnis für die praktischen Anforderungen des Schulalltags.
+Du bist:
+- fachlich präzise und rechtlich sorgfältig,
+- sachlich, freundlich und lösungsorientiert,
+- verständlich und praxisnah,
+- zurückhaltend bei rechtlichen Unsicherheiten,
+- transparent hinsichtlich deiner Quellen und deiner Grenzen.
+Dein Ziel ist nicht, möglichst viele Gesetzesbestimmungen wiederzugeben, sondern den Lehrkräften eine verlässliche Orientierung für ihr konkretes Handeln zu geben.
+Du triffst keine verbindlichen schulischen Einzelfallentscheidungen und ersetzt weder die Schulleitung noch eine Rechtsberatung durch die zuständigen Stellen.
+
+2. Zielgruppe und schulischer Kontext
+Deine Zielgruppe sind ausschließlich die Lehrkräfte des Pirckheimer-Gymnasiums Nürnberg.
+Berücksichtige, dass das Pirckheimer-Gymnasium ein bayerisches naturwissenschaftlich-technologisches und sprachliches Gymnasium in Nürnberg ist.
+Schulleiter: OStD Matthias Zeidler.
+
+3. Verbindliche Quellenbasis
+- Bayerisches Schulrecht: BayEUG, BaySchO, GSO (Gymnasialschulordnung)
+- Verfassungs- & Datenschutzrecht: GG, DSGVO, BayDSG, KunstUrhG (Bildnisrechte differenziert)
+- Beamten- & Dienstrecht: BayBG, BeamtStG, BayDG, LDO (Lehrerdienstordnung), UrlMV
+- Schulinterne Regelung: Hausordnung des Pirckheimer-Gymnasiums Nürnberg.
+Unterscheide stets zwischen Gesetz, Verordnung, Dienstordnung und schulinterner Hausordnung!
+
+4. Grundsätze & Antwortformat
+Strukturiere deine Antworten grundsätzlich nach diesem Schema:
+### 1. Kurzantwort
+(Präzise 2-4 Sätze zur direkten Orientierung)
+
+### 2. Rechtliche Grundlage
+(Konkrete Paragrafen/Artikel zitieren, z.B. Art. 56 Abs. 5 BayEUG, § 20 BaySchO, § 22 GSO etc.)
+
+### 3. Anwendung auf den konkreten Fall
+(Prüfung der Voraussetzungen, Sachverhaltssubsumtion, gebundene Entscheidung vs. Ermessensentscheidung)
+
+### 4. Konkrete Handlungsempfehlung
+(Schrittweise Anleitung: 1. Was ist unmittelbar zu tun? 2. Dokumentation, 3. Information/Elternkontakt)
+
+### 5. Zuständigkeit und weitere Abstimmung
+(Kann die Lehrkraft selbst entscheiden oder Einschaltung von Unter-/Mittelstufenbetreuung, Oberstufenkoordination, Beratungslehrkraft, Schulpsychologie oder Schulleitung/OStD Matthias Zeidler erforderlich?)
+
+### 6. Quellen
+(Präzise Nennung der Fundstellen)
+
+Datenschutz: Weise bei Namensnennungen sofort darauf hin, dass keine echten Schülernamen oder sensiblen PII genutzt werden dürfen.`;
+
+const INITIAL_WELCOME = `Willkommen beim PGN-Schulrechtsassistenten! Ich unterstütze Sie bei schulrechtlichen und schulorganisatorischen Fragen rund um den Alltag am Pirckheimer-Gymnasium Nürnberg. 
+
+Schildern Sie mir einfach Ihren Fall oder Ihre Frage. Ich suche die passende Rechtsgrundlage und gebe Ihnen eine konkrete Handlungsempfehlung. 
+
+⚠️ **Hinweis zum Datenschutz:** Bitte verwenden Sie bei Ihren Anfragen keine vollständigen Schülernamen, Geburtsdaten oder andere unnötige personenbezogene Daten. Nutzen Sie stattdessen neutrale Formulierungen wie „Ein Schüler der 9. Jahrgangsstufe...“.`;
+
+const PRESET_TOPICS = [
+  {
+    title: "Handy im Unterricht abgenommen",
+    desc: "Nutzung privater Mobilgeräte & Einbehaltung",
+    query: "Ein Schüler der 8. Klasse hat während des Unterrichts heimlich auf sein Smartphone geschaut. Ich habe das Gerät einbehalten. Welche rechtlichen Befugnisse habe ich bezüglich der Dauer der Einbehaltung und der Rückgabe?"
+  },
+  {
+    title: "Attestpflicht bei Fehlzeiten",
+    desc: "Häufige unentschuldigte Absenzen & Fristen",
+    query: "Eine Schülerin der 10. Klasse fehlt auffallend oft montags und an angekündigten Schulaufgabentagen mit Entschuldigungen der Eltern. Wann und durch wen kann eine ärztliche Attestpflicht auferlegt werden?"
+  },
+  {
+    title: "Aufsichtspflicht Wandertag",
+    desc: "Verlassen der Gruppe, Freizeit, Schwimmen",
+    query: "Wir planen einen Wandertag mit einer 7. Klasse am Wöhrder See in Nürnberg. Dürfen Schüler sich in Kleingruppen für eine Stunde allein bewegen und wie ist die Aufsicht beim Aufenthalt am Wasser geregelt?"
+  },
+  {
+    title: "Notenmitteilung an getrennte Eltern",
+    desc: "Gemeinsames Sorgerecht & Informationspflicht",
+    query: "Die Eltern eines Schülers leben getrennt, haben aber gemeinsames Sorgerecht. Der Vater verlangt separate schriftliche Zusendung aller Noten und Zeugniskopien. Wie verhalte ich mich rechtssicher?"
+  },
+  {
+    title: "Fotografieren bei der Schulfeier",
+    desc: "DSGVO, KunstUrhG & Schulfest",
+    query: "Dürfen Lehrkräfte oder Eltern bei der Theateraufführung am PGN Fotos machen und diese im Schuljahresbericht oder auf der Schulhomepage veröffentlichen?"
+  },
+  {
+    title: "Kurzarbeit / Mündliche Noten",
+    desc: "Ankündigungspflicht & Nachholtermine (GSO)",
+    query: "Muss eine Kurzarbeit oder ein Stegreifentwurf in der 9. Klasse angekündigt werden und über welchen Stoffumfang darf sich dieser erstrecken?"
+  }
+];
+
+const LEGAL_LINKS = [
+  { title: "Bayern.Recht (Gesetze & Verordnungen)", url: "https://www.gesetze-bayern.de", desc: "BayEUG, BaySchO, GSO, LDO amtlich" },
+  { title: "Bayerisches Kultusministerium (KM)", url: "https://www.km.bayern.de", desc: "KMS, Rundschreiben & Amtliche Bekanntmachungen" },
+  { title: "Bayer. Landesbeauftragter für Datenschutz (BayLfD)", url: "https://www.datenschutz-bayern.de", desc: "Orientierungshilfen Schule & Datenschutz" },
+  { title: "Gesetze im Internet (Bund)", url: "https://www.gesetze-im-internet.de", desc: "GG, BeamtStG, BGB, KunstUrhG" },
+  { title: "PGN Schulhomepage", url: "https://www.pirckheimer-gymnasium.de", desc: "Pirckheimer-Gymnasium Nürnberg" }
+];
+
+export default function App() {
+  const [messages, setMessages] = useState([
+    {
+      role: 'assistant',
+      content: INITIAL_WELCOME,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }
+  ]);
+  const [inputPrompt, setInputPrompt] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [customApiKey, setCustomApiKey] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [showSourcesModal, setShowSourcesModal] = useState(false);
+  const [copiedIndex, setCopiedIndex] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    // Scroll to bottom on new message
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isLoading]);
+
+  const handleSendMessage = async (userText = inputPrompt) => {
+    const query = userText.trim();
+    if (!query || isLoading) return;
+
+    const newTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const updatedMessages = [
+      ...messages,
+      { role: 'user', content: query, timestamp: newTimestamp }
+    ];
+
+    setMessages(updatedMessages);
+    setInputPrompt('');
+    setIsLoading(true);
+
+    try {
+      // Build conversation turns for Gemini
+      const conversationContents = updatedMessages
+        .filter((_, idx) => idx > 0) // Skip initial UI-only welcome if needed or keep context
+        .map(msg => ({
+          role: msg.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: msg.content }]
+        }));
+
+      // In canvas runtime, apiKey empty string uses the built-in system key
+      const activeKey = customApiKey.trim() || "";
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${activeKey}`;
+
+      const payload = {
+        contents: conversationContents,
+        systemInstruction: {
+          parts: [{ text: SYSTEM_PROMPT }]
+        },
+        tools: [{ google_search: {} }],
+        generationConfig: {
+          temperature: 0.2, // Low temperature for high legal accuracy
+          topP: 0.95,
+          maxOutputTokens: 2500,
+        }
+      };
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Fehler bei der Kommunikation mit dem KI-Dienst (${response.status})`);
+      }
+
+      const data = await response.json();
+      const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!replyText) {
+        throw new Error("Antwort konnte nicht aus dem Dienst extrahiert werden.");
+      }
+
+      // Collect search citations if available
+      let citations = [];
+      const attributions = data.candidates?.[0]?.groundingMetadata?.groundingAttributions;
+      if (attributions && Array.isArray(attributions)) {
+        citations = attributions
+          .map(a => ({ title: a.web?.title, uri: a.web?.uri }))
+          .filter(c => c.title && c.uri);
+      }
+
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: replyText,
+          citations: citations.slice(0, 4),
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
+    } catch (err) {
+      console.error(err);
+      setMessages(prev => [
+        ...prev,
+        {
+          role: 'assistant',
+          isError: true,
+          content: `⚠️ **Hinweis:** Bei der Bearbeitung der Anfrage ist ein Fehler aufgetreten (${err.message}). Bitte prüfen Sie die Netzverbindung oder tragen Sie unter den Einstellungen einen eigenen Gemini API-Key ein.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const copyToClipboard = (text, index) => {
+    navigator.clipboard.writeText(text);
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex(null), 2500);
+  };
+
+  const handlePrintNote = (text, timestamp) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Schulrechtliche Auskunft - Pirckheimer-Gymnasium Nürnberg</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 40px; color: #1e293b; line-height: 1.6; }
+            .header { border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end; }
+            .title { font-size: 20px; font-weight: bold; color: #0f172a; }
+            .meta { font-size: 12px; color: #64748b; }
+            .disclaimer { font-size: 11px; background: #f1f5f9; border-left: 3px solid #64748b; padding: 8px 12px; margin-bottom: 24px; color: #475569; }
+            .content { white-space: pre-wrap; font-size: 13px; }
+            @media print {
+              body { padding: 20px; }
+              button { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div>
+              <div class="title">Pirckheimer-Gymnasium Nürnberg</div>
+              <div style="font-size: 14px; color: #334155;">Schulrechtsassistent – Vermerk / Handlungsempfehlung</div>
+            </div>
+            <div class="meta">
+              Erstellt am: ${new Date().toLocaleDateString('de-DE')} um ${timestamp}
+            </div>
+          </div>
+          <div class="disclaimer">
+            <strong>Dienstlicher Hinweis:</strong> Dieser Auszug dient der Orientierung für Lehrkräfte am Pirckheimer-Gymnasium Nürnberg. Er ersetzt weder die Schulleitung noch eine förmliche Rechtsberatung durch das Kultusministerium oder die MB-Dienststelle.
+          </div>
+          <div class="content">${text.replace(/###/g, '').replace(/\*\*/g, '')}</div>
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const resetChat = () => {
+    setMessages([
+      {
+        role: 'assistant',
+        content: INITIAL_WELCOME,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }
+    ]);
+  };
+
+  return (
+    <div className="flex h-screen w-full bg-slate-100 font-sans text-slate-800 antialiased overflow-hidden">
+      
+      {/* MOBILE OVERLAY */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-30 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* SIDEBAR: PGN Info, Presets, Legal Sources */}
+      <aside className={`
+        fixed lg:static top-0 bottom-0 left-0 z-40 w-80 bg-slate-900 text-slate-100 flex flex-col border-r border-slate-800
+        transition-transform duration-300 ease-in-out
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+      `}>
+        {/* Header */}
+        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
+              <Scale className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <div className="font-bold text-base tracking-wide flex items-center gap-1.5">
+                PGN-Rechtsrat
+                <span className="text-[10px] bg-blue-500/30 text-blue-300 border border-blue-400/30 px-1.5 py-0.5 rounded font-mono">
+                  BAYERN
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">Pirckheimer-Gymnasium Nürnberg</p>
+            </div>
+          </div>
+          <button 
+            onClick={() => setSidebarOpen(false)} 
+            className="lg:hidden text-slate-400 hover:text-white p-1"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* School Context Badge */}
+        <div className="px-4 py-3 bg-slate-800/60 border-b border-slate-800 flex items-center gap-2.5 text-xs text-slate-300">
+          <Building className="w-4 h-4 text-blue-400 shrink-0" />
+          <div>
+            <span className="font-semibold text-white">NTG & SG Gymnasium</span>
+            <div className="text-[11px] text-slate-400">Schulleitung: OStD M. Zeidler</div>
+          </div>
+        </div>
+
+        {/* Scrollable Presets Section */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div>
+            <div className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase mb-2 flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3 text-amber-400" />
+              Typische Praxisfälle
+            </div>
+            <div className="space-y-1.5">
+              {PRESET_TOPICS.map((topic, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    handleSendMessage(topic.query);
+                    setSidebarOpen(false);
+                  }}
+                  className="w-full text-left p-2.5 rounded-lg bg-slate-800/40 hover:bg-slate-800 hover:border-slate-700 border border-transparent transition-all group"
+                >
+                  <div className="text-xs font-medium text-slate-200 group-hover:text-blue-300 flex items-center justify-between">
+                    <span>{topic.title}</span>
+                    <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-blue-400" />
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">
+                    {topic.desc}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-[11px] font-semibold tracking-wider text-slate-400 uppercase mb-2 flex items-center gap-1.5">
+              <BookOpen className="w-3 h-3 text-emerald-400" />
+              Gesetzliche Prüfungsnormen
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 text-xs text-slate-300">
+              <div className="bg-slate-800/50 p-2 rounded border border-slate-700/50">
+                <span className="font-bold text-white block text-[11px]">BayEUG</span>
+                <span className="text-[10px] text-slate-400">Schulgesetz Bayern</span>
+              </div>
+              <div className="bg-slate-800/50 p-2 rounded border border-slate-700/50">
+                <span className="font-bold text-white block text-[11px]">BaySchO</span>
+                <span className="text-[10px] text-slate-400">Bayer. Schulordnung</span>
+              </div>
+              <div className="bg-slate-800/50 p-2 rounded border border-slate-700/50">
+                <span className="font-bold text-white block text-[11px]">GSO</span>
+                <span className="text-[10px] text-slate-400">Gymnasialschulordn.</span>
+              </div>
+              <div className="bg-slate-800/50 p-2 rounded border border-slate-700/50">
+                <span className="font-bold text-white block text-[11px]">LDO</span>
+                <span className="text-[10px] text-slate-400">Dienstordnung Lehrkräfte</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer Actions */}
+        <div className="p-3 border-t border-slate-800 bg-slate-900/90 space-y-2">
+          <button
+            onClick={() => setShowSourcesModal(true)}
+            className="w-full py-2 px-3 rounded bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 flex items-center justify-center gap-2 transition"
+          >
+            <BookOpen className="w-4 h-4 text-blue-400" />
+            Amtliche Rechtsportale öffnen
+          </button>
+          
+          <div className="flex items-center justify-between pt-1">
+            <button
+              onClick={resetChat}
+              className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 p-1"
+              title="Neuen Dialog beginnen"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Zurücksetzen
+            </button>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="text-[11px] text-slate-400 hover:text-white flex items-center gap-1 p-1"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              API & Einstellungen
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* MAIN CHAT AREA */}
+      <main className="flex-1 flex flex-col h-full bg-slate-50 relative overflow-hidden">
+        
+        {/* Top Header */}
+        <header className="h-16 border-b border-slate-200 bg-white/80 backdrop-blur px-4 sm:px-6 flex items-center justify-between shrink-0 shadow-sm z-10">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden p-2 rounded-lg text-slate-600 hover:bg-slate-100"
+              aria-label="Menü öffnen"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="font-semibold text-slate-800 text-sm sm:text-base">
+                  Schulrechtsassistent Pirckheimer-Gymnasium
+                </h1>
+                <span className="hidden sm:inline-flex items-center gap-1 text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  GSO/BayEUG Konform
+                </span>
+              </div>
+              <p className="text-[11px] sm:text-xs text-slate-500">
+                Orientierung für Lehrkräfte nach bayerischem Gymnasial- & Dienstrecht
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant');
+                if (lastAssistant) handlePrintNote(lastAssistant.content, lastAssistant.timestamp);
+              }}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
+              title="Aktuelle Antwort als Aktenvermerk drucken"
+            >
+              <Printer className="w-3.5 h-3.5 text-slate-600" />
+              Aktennotiz
+            </button>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition"
+              title="API-Konfiguration"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          </div>
+        </header>
+
+        {/* PRIVACY WARNING BANNER */}
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center gap-2.5 text-amber-900 text-xs shrink-0">
+          <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+          <div className="flex-1">
+            <span className="font-semibold">Datenschutz-Vorgabe:</span> Verwenden Sie im Chat keine Klarnamen von Schülerinnen und Schülern oder sensible Gesundheitsdaten. Nutzen Sie Rollenbezeichnungen wie <em>„Schülerin 10. Jgst.“</em>.
+          </div>
+        </div>
+
+        {/* MESSAGES LIST */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+          <div className="max-w-4xl mx-auto space-y-5">
+            {messages.map((msg, index) => {
+              const isAssistant = msg.role === 'assistant';
+              return (
+                <div
+                  key={index}
+                  className={`flex flex-col ${isAssistant ? 'items-start' : 'items-end'}`}
+                >
+                  <div className="flex items-center gap-2 mb-1 px-1 text-[11px] text-slate-400">
+                    <span className="font-medium text-slate-600">
+                      {isAssistant ? 'PGN-Schulrechtsassistent' : 'Lehrkraft'}
+                    </span>
+                    <span>•</span>
+                    <span>{msg.timestamp}</span>
+                  </div>
+
+                  <div
+                    className={`
+                      relative group max-w-[95%] sm:max-w-[85%] rounded-2xl p-4 sm:p-5 shadow-sm text-sm leading-relaxed
+                      ${isAssistant 
+                        ? (msg.isError ? 'bg-red-50 text-red-900 border border-red-200' : 'bg-white text-slate-800 border border-slate-200')
+                        : 'bg-blue-600 text-white rounded-br-xs'}
+                    `}
+                  >
+                    {/* Message Text with Structured Styling */}
+                    <div className="whitespace-pre-wrap selection:bg-blue-200 selection:text-slate-900">
+                      {msg.content}
+                    </div>
+
+                    {/* Citations if Grounded by Gemini Search */}
+                    {msg.citations && msg.citations.length > 0 && (
+                      <div className="mt-4 pt-3 border-t border-slate-100">
+                        <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                          <ExternalLink className="w-3 h-3 text-blue-500" />
+                          Geprüfte amtliche Nachweise:
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {msg.citations.map((c, ci) => (
+                            <a
+                              key={ci}
+                              href={c.uri}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[11px] bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 px-2 py-1 rounded border border-slate-200 flex items-center gap-1 transition"
+                            >
+                              <span>{c.title}</span>
+                              <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Quick Tools on Assistant Responses */}
+                    {isAssistant && !msg.isError && (
+                      <div className="mt-4 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
+                        <div className="flex items-center gap-1 text-[11px]">
+                          <School className="w-3 h-3 text-slate-400" />
+                          <span>Gymnasium Bayern • PGN Nürnberg</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 opacity-90 group-hover:opacity-100 transition">
+                          <button
+                            onClick={() => copyToClipboard(msg.content, index)}
+                            className="p-1.5 hover:text-blue-600 hover:bg-slate-100 rounded text-slate-500 flex items-center gap-1 text-[11px] transition"
+                            title="Text kopieren"
+                          >
+                            {copiedIndex === index ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <span className="text-emerald-600 font-medium">Kopiert</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>Kopieren</span>
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handlePrintNote(msg.content, msg.timestamp)}
+                            className="p-1.5 hover:text-slate-900 hover:bg-slate-100 rounded text-slate-500 flex items-center gap-1 text-[11px] transition"
+                            title="Als Druckansicht / Vermerk"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>Drucken</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Loading Indicator */}
+            {isLoading && (
+              <div className="flex flex-col items-start">
+                <div className="flex items-center gap-2 mb-1 px-1 text-[11px] text-slate-400">
+                  <span className="font-medium text-slate-600">PGN-Schulrechtsassistent</span>
+                  <span>prüft Gesetzesnormen...</span>
+                </div>
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-center gap-3">
+                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-xs text-slate-600">
+                    Recherchiere in BayEUG, BaySchO, GSO und LDO...
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
+
+        {/* INPUT PROMPT BAR */}
+        <div className="p-4 sm:p-5 bg-white border-t border-slate-200 shrink-0">
+          <div className="max-w-4xl mx-auto">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSendMessage();
+              }}
+              className="relative flex items-end bg-slate-50 border border-slate-300 rounded-2xl shadow-inner focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all p-1.5"
+            >
+              <textarea
+                value={inputPrompt}
+                onChange={(e) => setInputPrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                placeholder="Schulrechtlichen Sachverhalt oder Frage schildern (z.B. 'Darf ich einen Schüler vom Wandertag ausschließen?')..."
+                className="w-full bg-transparent resize-none border-0 text-sm text-slate-800 placeholder-slate-400 focus:outline-none p-2.5 max-h-32 min-h-[44px]"
+                rows={inputPrompt.split('\n').length > 2 ? 3 : 1}
+              />
+              <button
+                type="submit"
+                disabled={!inputPrompt.trim() || isLoading}
+                className="ml-2 mb-1 p-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:hover:bg-blue-600 text-white transition shrink-0 shadow"
+                aria-label="Anfrage senden"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </form>
+            <div className="flex items-center justify-between mt-2 px-1 text-[11px] text-slate-400">
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                <span>Stand: Schulrecht Bayern 2026/27</span>
+              </div>
+              <div>
+                Enter zum Senden • Umschalt + Enter für neue Zeile
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </main>
+
+      {/* MODAL: Amtliche Rechtsquellen */}
+      {showSourcesModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200">
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-blue-400" />
+                <h3 className="font-semibold text-sm">Amtliche Rechtsportale & Quellen</h3>
+              </div>
+              <button 
+                onClick={() => setShowSourcesModal(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto">
+              <p className="text-xs text-slate-500 mb-2">
+                Der Assistent greift vorrangig auf folgende bayerische Rechtsquellen zu:
+              </p>
+              {LEGAL_LINKS.map((link, idx) => (
+                <a
+                  key={idx}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 transition group"
+                >
+                  <div className="flex items-center justify-between text-xs font-semibold text-slate-800 group-hover:text-blue-700">
+                    <span>{link.title}</span>
+                    <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600" />
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">
+                    {link.desc}
+                  </div>
+                </a>
+              ))}
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-200 text-right">
+              <button
+                onClick={() => setShowSourcesModal(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium rounded-lg"
+              >
+                Schließen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Settings / Custom API Key */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200">
+            <div className="p-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Settings className="w-5 h-5 text-blue-400" />
+                <h3 className="font-semibold text-sm">System-Einstellungen</h3>
+              </div>
+              <button 
+                onClick={() => setShowSettings(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Eigener Google Gemini API-Key (Optional)
+                </label>
+                <input
+                  type="password"
+                  placeholder="AIzaSy..."
+                  value={customApiKey}
+                  onChange={(e) => setCustomApiKey(e.target.value)}
+                  className="w-full text-xs p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                />
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  Standardmäßig nutzt die Anwendung den bereitgestellten Plattform-Schlüssel. Sie können hier jederzeit einen persönlichen Google AI Studio Key hinterlegen.
+                </p>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 text-xs text-slate-600">
+                <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                  <UserCheck className="w-3.5 h-3.5 text-blue-600" />
+                  Rolle & Verantwortungsbereich
+                </div>
+                <div>Perspektive: Schulleitung Pirckheimer-Gymnasium</div>
+                <div>Modell: Gemini 3 Flash mit Websuche-Grounding</div>
+                <div>Schulleiter: OStD Matthias Zeidler</div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-2">
+              <button
+                onClick={() => setShowSettings(false)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg shadow"
+              >
+                Fertig
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
